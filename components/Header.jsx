@@ -11,12 +11,8 @@ export function Header({ onOpenCreateModal }) {
         <div className="flex items-center gap-3">
           <div className="flex items-center gap-2">
             <h1 className="text-base font-semibold text-slate-900 tracking-tight">
-              TaskFlow
-            </h1>
-            <span className="text-slate-300 font-light">/</span>
-            <span className="text-xs font-medium text-slate-500">
               Project Board
-            </span>
+            </h1>
           </div>
         </div>
 
