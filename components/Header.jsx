@@ -9,9 +9,6 @@ export function Header({ onOpenCreateModal }) {
         
         {/* Brand & Breadcrumb */}
         <div className="flex items-center gap-3">
-          <div className="w-8 h-8 rounded-lg bg-slate-900 text-white flex items-center justify-center shadow-xs">
-            <CheckSquare className="w-4 h-4 stroke-[2.5]" />
-          </div>
           <div className="flex items-center gap-2">
             <h1 className="text-base font-semibold text-slate-900 tracking-tight">
               TaskFlow
