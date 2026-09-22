@@ -1,220 +1,177 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect } from "react";
 import confetti from "canvas-confetti";
 import { INITIAL_TASKS } from "@/data/initialTasks";
 
 const STORAGE_KEY = "task-board-tasks";
-const VALID_STATUSES = ["todo", "in-progress", "done"];
 
 export function useTasks() {
   const [tasks, setTasks] = useState([]);
   const [isLoaded, setIsLoaded] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
-  const [statusFilter, setStatusFilter] = useState("all");
 
-  // Load and validate tasks from localStorage on mount
+  // Load tasks from localStorage on initial render
   useEffect(() => {
     try {
-      const saved = localStorage.getItem(STORAGE_KEY);
-      if (saved) {
-        const parsed = JSON.parse(saved);
-        if (Array.isArray(parsed) && parsed.length > 0) {
-          // Validate task objects
-          const validTasks = parsed.filter(
-            (item) =>
-              item &&
-              typeof item === "object" &&
-              typeof item.id === "string" &&
-              typeof item.title === "string" &&
-              VALID_STATUSES.includes(item.status)
-          );
-
-          if (validTasks.length > 0) {
-            setTasks(validTasks);
-          } else {
-            setTasks(INITIAL_TASKS);
-          }
+      const savedData = localStorage.getItem(STORAGE_KEY);
+      if (savedData) {
+        const parsed = JSON.parse(savedData);
+        if (Array.isArray(parsed)) {
+          setTasks(parsed);
         } else {
           setTasks(INITIAL_TASKS);
         }
       } else {
         setTasks(INITIAL_TASKS);
       }
-    } catch (e) {
-      console.error("Error parsing tasks from localStorage:", e);
+    } catch (err) {
       setTasks(INITIAL_TASKS);
     } finally {
       setIsLoaded(true);
     }
   }, []);
 
-  // Save to localStorage whenever tasks change
+  // Save tasks to localStorage on change
   useEffect(() => {
     if (isLoaded) {
       try {
         localStorage.setItem(STORAGE_KEY, JSON.stringify(tasks));
-      } catch (e) {
-        console.error("Error saving tasks to localStorage:", e);
+      } catch (err) {
+        console.error("Failed to save tasks to localStorage", err);
       }
     }
   }, [tasks, isLoaded]);
 
-  const triggerConfetti = useCallback(() => {
-    try {
-      confetti({
-        particleCount: 65,
-        spread: 60,
-        origin: { y: 0.65 },
-        colors: ["#0f172a", "#334155", "#64748b", "#94a3b8", "#cbd5e1"],
-      });
-    } catch (e) {
-      // ignore
+  // Helper for celebration effect when finishing a task
+  const checkConfetti = (oldStatus, newStatus) => {
+    if (oldStatus !== "done" && newStatus === "done") {
+      try {
+        confetti({
+          particleCount: 60,
+          spread: 60,
+          origin: { y: 0.65 },
+        });
+      } catch (e) {}
     }
-  }, []);
+  };
 
-  // Add new task - strictly validates title & defaults to 'todo'
-  const addTask = useCallback(({ title, description, priority, tag, dueDate }) => {
-    const trimmedTitle = title ? title.trim() : "";
-    if (!trimmedTitle) return null;
+  // Create a new task (defaults to 'todo')
+  const addTask = (taskData) => {
+    const title = taskData.title ? taskData.title.trim() : "";
+    if (!title) return;
 
     const now = Date.now();
     const newTask = {
-      id: `task-${now}-${Math.random().toString(36).substring(2, 6)}`,
-      title: trimmedTitle,
-      description: description ? description.trim() : "",
+      id: `task-${now}`,
+      title: title,
+      description: taskData.description ? taskData.description.trim() : "",
       status: "todo",
-      priority: priority && ["urgent", "high", "medium", "low"].includes(priority) ? priority : "medium",
-      tag: tag ? tag.trim() : "General",
-      dueDate: dueDate || "",
+      priority: taskData.priority || "medium",
+      tag: taskData.tag ? taskData.tag.trim() : "Feature",
+      dueDate: taskData.dueDate || "",
       createdAt: now,
       updatedAt: now,
     };
 
-    setTasks((prev) => [newTask, ...prev]);
-    return newTask;
-  }, []);
+    setTasks((current) => [newTask, ...current]);
+  };
 
-  // Update existing task
-  const updateTask = useCallback((taskId, updatedFields) => {
-    const now = Date.now();
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id === taskId) {
-          const validStatus = updatedFields.status && VALID_STATUSES.includes(updatedFields.status)
-            ? updatedFields.status
-            : t.status;
-
-          const isCompleting = t.status !== "done" && validStatus === "done";
-          if (isCompleting) triggerConfetti();
+  // Update existing task details
+  const updateTask = (taskId, fields) => {
+    setTasks((current) =>
+      current.map((task) => {
+        if (task.id === taskId) {
+          const nextStatus = fields.status || task.status;
+          checkConfetti(task.status, nextStatus);
 
           return {
-            ...t,
-            ...updatedFields,
-            title: updatedFields.title ? updatedFields.title.trim() : t.title,
-            description: updatedFields.description !== undefined ? updatedFields.description.trim() : t.description,
-            status: validStatus,
-            updatedAt: now,
+            ...task,
+            ...fields,
+            title: fields.title ? fields.title.trim() : task.title,
+            description: fields.description !== undefined ? fields.description.trim() : task.description,
+            status: nextStatus,
+            updatedAt: Date.now(),
           };
         }
-        return t;
+        return task;
       })
     );
-  }, [triggerConfetti]);
+  };
 
-  // Move task to a new status stage
-  const moveTask = useCallback((taskId, newStatus) => {
-    if (!VALID_STATUSES.includes(newStatus)) return;
-    const now = Date.now();
-
-    setTasks((prev) =>
-      prev.map((t) => {
-        if (t.id === taskId) {
-          if (t.status !== "done" && newStatus === "done") {
-            triggerConfetti();
-          }
+  // Move task to another stage (todo / in-progress / done)
+  const moveTask = (taskId, newStatus) => {
+    setTasks((current) =>
+      current.map((task) => {
+        if (task.id === taskId) {
+          checkConfetti(task.status, newStatus);
           return {
-            ...t,
+            ...task,
             status: newStatus,
-            updatedAt: now,
+            updatedAt: Date.now(),
           };
         }
-        return t;
+        return task;
       })
     );
-  }, [triggerConfetti]);
+  };
 
-  // Delete task
-  const deleteTask = useCallback((taskId) => {
-    if (!taskId) return;
-    setTasks((prev) => prev.filter((t) => t.id !== taskId));
-  }, []);
+  // Remove task from board
+  const deleteTask = (taskId) => {
+    setTasks((current) => current.filter((task) => task.id !== taskId));
+  };
 
-  // Drag and drop reordering across or within columns
-  const reorderTasks = useCallback((source, destination) => {
+  // Handle Drag and Drop reordering across columns
+  const reorderTasks = (source, destination) => {
     if (!destination) return;
 
-    const sourceColId = source.droppableId;
-    const destColId = destination.droppableId;
-    const sourceIdx = source.index;
-    const destIdx = destination.index;
+    const sourceCol = source.droppableId;
+    const destCol = destination.droppableId;
 
-    if (!VALID_STATUSES.includes(sourceColId) || !VALID_STATUSES.includes(destColId)) return;
+    setTasks((current) => {
+      const itemsInSource = current.filter((t) => t.status === sourceCol);
+      const itemsInDest = sourceCol === destCol ? itemsInSource : current.filter((t) => t.status === destCol);
+      const otherItems = current.filter((t) => t.status !== sourceCol && t.status !== destCol);
 
-    setTasks((prevTasks) => {
-      const sourceList = prevTasks.filter((t) => t.status === sourceColId);
-      const destList =
-        sourceColId === destColId
-          ? sourceList
-          : prevTasks.filter((t) => t.status === destColId);
-      const otherTasks = prevTasks.filter(
-        (t) => t.status !== sourceColId && t.status !== destColId
-      );
+      const [movedTask] = itemsInSource.splice(source.index, 1);
+      if (!movedTask) return current;
 
-      const [movedItem] = sourceList.splice(sourceIdx, 1);
-      if (!movedItem) return prevTasks;
+      checkConfetti(movedTask.status, destCol);
+      movedTask.status = destCol;
+      movedTask.updatedAt = Date.now();
 
-      const updatedMovedItem = {
-        ...movedItem,
-        status: destColId,
-        updatedAt: Date.now(),
-      };
-
-      if (movedItem.status !== "done" && destColId === "done") {
-        triggerConfetti();
-      }
-
-      if (sourceColId === destColId) {
-        sourceList.splice(destIdx, 0, updatedMovedItem);
-        return [...otherTasks, ...sourceList];
+      if (sourceCol === destCol) {
+        itemsInSource.splice(destination.index, 0, movedTask);
+        return [...otherItems, ...itemsInSource];
       } else {
-        destList.splice(destIdx, 0, updatedMovedItem);
-        return [...otherTasks, ...sourceList, ...destList];
+        itemsInDest.splice(destination.index, 0, movedTask);
+        return [...otherItems, ...itemsInSource, ...itemsInDest];
       }
     });
-  }, [triggerConfetti]);
+  };
 
-  const clearAllTasks = useCallback(() => {
-    setTasks([]);
-  }, []);
-
-  const resetDemoTasks = useCallback(() => {
+  // Reset to sample tasks
+  const resetDemoTasks = () => {
     setTasks(INITIAL_TASKS);
-  }, []);
+  };
 
-  // Filtering with query sanitization
-  const sanitizedQuery = searchQuery.trim().toLowerCase();
+  // Clear all tasks from board
+  const clearAllTasks = () => {
+    setTasks([]);
+  };
+
+  // Search filter logic
+  const query = searchQuery.trim().toLowerCase();
   const filteredTasks = tasks.filter((t) => {
-    const matchesSearch =
-      !sanitizedQuery ||
-      t.title.toLowerCase().includes(sanitizedQuery) ||
-      t.description.toLowerCase().includes(sanitizedQuery) ||
-      (t.tag && t.tag.toLowerCase().includes(sanitizedQuery));
-    const matchesStatus = statusFilter === "all" || t.status === statusFilter;
-    return matchesSearch && matchesStatus;
+    if (!query) return true;
+    return (
+      t.title.toLowerCase().includes(query) ||
+      t.description.toLowerCase().includes(query) ||
+      (t.tag && t.tag.toLowerCase().includes(query))
+    );
   });
 
-  // Calculate Column Stats dynamically
+  // Simple statistics
   const todoCount = tasks.filter((t) => t.status === "todo").length;
   const inProgressCount = tasks.filter((t) => t.status === "in-progress").length;
   const doneCount = tasks.filter((t) => t.status === "done").length;
@@ -223,7 +180,6 @@ export function useTasks() {
 
   return {
     tasks: filteredTasks,
-    rawTasks: tasks,
     totalCount,
     todoCount,
     inProgressCount,
@@ -232,8 +188,6 @@ export function useTasks() {
     isLoaded,
     searchQuery,
     setSearchQuery,
-    statusFilter,
-    setStatusFilter,
     addTask,
     updateTask,
     moveTask,
